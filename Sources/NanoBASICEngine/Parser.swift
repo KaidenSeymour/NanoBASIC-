@@ -166,35 +166,89 @@ public class Parser {
     
     // This function corresponds to the "relop" production rule in grammar.txt
     func parseBooleanExpression() throws -> BooleanExpression? {
-        // YOU FILL IN HERE
-        return nil
+        let left = try parseExpression()
+        guard let leftExpr = left else {
+            throw ParserError.ParseError(explanation: "Expected left-hand expression in boolean expression", token: current)
+        }
+
+        let operation: Token
+        switch current {
+        case .equal, .notEqual, .lessThan, .lessThanEqual, .greaterThan, .greaterThanEqual:
+            operation = current
+            index += 1
+        default:
+            throw ParserError.ParseError(explanation: "Expected boolean operator (e.g., =, <>)", token: current)
+        }
+
+        let right = try parseExpression()
+        guard let rightExpr = right else {
+            throw ParserError.ParseError(explanation: "Expected right-hand expression in boolean expression", token: current)
+        }
+
+        return BooleanExpression(operation: operation, left: leftExpr, right: rightExpr, range: leftExpr.range.lowerBound..<rightExpr.range.upperBound)
     }
     
     // MARK: Parsing Statements
     
     // Parse a GOSUB statement from the "statement" production rule in grammar.txt
-    func parseGoSub(lineNumber: Int16) throws -> GoSubCall? {
-        // YOU FILL IN HERE
-        return nil
+   func parseGoSub(lineNumber: Int16) throws -> GoSubCall? {
+        guard case let .number(range, targetLine) = lookahead else {
+            throw ParserError.ParseError(explanation: "Expected line number after GOSUB", token: current)
+        }
+        index += 2  // Consume GOSUB and line number token
+        return GoSubCall(gotoLine: targetLine, line: lineNumber, range: range)
     }
     
     // Parse a LET statement from the "statement" production rule in grammar.txt
     func parseLet(lineNumber: Int16) throws -> VarSet? {
-        // YOU FILL IN HERE
-        return nil
+        guard case let .variable(varRange, varName) = lookahead else {
+            throw ParserError.ParseError(explanation: "Expected variable name after LET", token: current)
+        }
+        index += 2  // Consume LET and variable name
+        
+        guard case .equal = current else {
+            throw ParserError.ParseError(explanation: "Expected '=' after variable name in LET statement", token: current)
+        }
+        index += 1  // Consume '='
+        
+        let expression = try parseExpression()
+        guard let expr = expression else {
+            throw ParserError.ParseError(explanation: "Expected an expression after '=' in LET statement", token: current)
+        }
+        
+        return VarSet(name: varName, value: expr, line: lineNumber, range: varRange.lowerBound..<expr.range.upperBound)
     }
     
     // Parse a GOTO statement from the "statement" production rule in grammar.txt
     func parseGoTo(lineNumber: Int16) throws -> GoToCall? {
-        // YOU FILL IN HERE
-        return nil
+        guard case let .number(range, targetLine) = lookahead else {
+            throw ParserError.ParseError(explanation: "Expected line number after GOTO", token: current)
+        }
+        index += 2  // Consume GOTO and line number token
+        return GoToCall(gotoLine: targetLine, line: lineNumber, range: range)
     }
     
     // Parse an IF statement from the "statement" production rule in grammar.txt
-    func parseIf(lineNumber: Int16) throws -> IfStatement? {
-        // YOU FILL IN HERE
-        return nil
+   func parseIf(lineNumber: Int16) throws -> IfStatement? {
+        index += 1  // Consume "IF"
+        let booleanExpr = try parseBooleanExpression()
+        guard let boolExpr = booleanExpr else {
+            throw ParserError.ParseError(explanation: "Expected a valid boolean expression after IF", token: current)
+        }
+
+        guard case .then = current else {
+            throw ParserError.ParseError(explanation: "Expected THEN keyword in IF statement", token: current)
+        }
+        index += 1  // Consume THEN
+
+        let thenStmt = try parseStatement(line: lineNumber)
+        guard let statement = thenStmt else {
+            throw ParserError.ParseError(explanation: "Expected statement after THEN", token: current)
+        }
+
+        return IfStatement(booleanExpression: boolExpr, thenStatement: statement, line: lineNumber, range: boolExpr.range.lowerBound..<statement.range.upperBound)
     }
+
     
     // Parse a PRINT statement from the "statement" production rule in grammar.txt
     func parsePrint(lineNumber: Int16) throws -> PrintStatement? {

@@ -70,30 +70,76 @@ extension BASICPlayer {
     
     // Look at a statement, run the appropriate Swift code for what the statement
     // represents
-    public mutating func interpret(statement: Statement) throws {
-        switch (statement) {
-        case let printStatement as PrintStatement: // print everything tab separated using print()
-            for (index, printable) in printStatement.printables.enumerated() {
-                if let expr = printable as? Expression {
-                    if index != printStatement.printables.count - 1 {
-                        print("\(evaluate(expression: expr))", terminator: "\t")
-                    } else {
-                        print("\(evaluate(expression: expr))")
-                    }
-                } else if let str = printable as? String {
-                    if index != printStatement.printables.count - 1 {
-                        print(str, terminator: "\t")
-                    } else {
-                        print(str)
-                    }
+public mutating func interpret(statement: Statement) throws {
+    switch statement {
+    case let printStatement as PrintStatement:
+        for (index, printable) in printStatement.printables.enumerated() {
+            if let expr = printable as? Expression {
+                if index != printStatement.printables.count - 1 {
+                    print("\(evaluate(expression: expr))", terminator: "\t")
+                } else {
+                    print("\(evaluate(expression: expr))")
+                }
+            } else if let str = printable as? String {
+                if index != printStatement.printables.count - 1 {
+                    print(str, terminator: "\t")
+                } else {
+                    print(str)
                 }
             }
-            statementIndex += 1
-        // YOU FILL IN HERE the other cases: LET, IF, GOTO, GOSUB, RETURN
-        default:
-            break
         }
+        statementIndex += 1
+
+    case let varSet as VarSet:
+        variableTable[varSet.name.lowercased()] = evaluate(expression: varSet.value)
+        statementIndex += 1
+
+    case let ifStatement as IfStatement:
+        if evaluate(booleanExpression: ifStatement.booleanExpression) {
+           try interpret(statement: ifStatement.thenStatement) // Execute THEN statement
+        } else {
+            statementIndex += 1 // Move to next statement only if condition is false
+        }
+
+    case let gotoCall as GoToCall:
+        if let newIndex = findLineIndex(lineNumber: gotoCall.gotoLine) {
+            statementIndex = newIndex
+        } else {
+            throw InterpreterError.InterpreterError(
+                explanation: "GOTO line number not found",
+                statement: statement
+            )
+        }
+
+    case let gosubCall as GoSubCall:
+        subroutineStack.push(statementIndex + 1)
+        if let newIndex = findLineIndex(lineNumber: gosubCall.gotoLine) {
+            statementIndex = newIndex
+        } else {
+            throw InterpreterError.InterpreterError(
+                explanation: "GOSUB line number not found",
+                statement: statement
+            )
+        }
+
+    case is ReturnStatement:
+        if let returnIndex = subroutineStack.pop() {
+            statementIndex = returnIndex
+        } else {
+            throw InterpreterError.InterpreterError(
+                explanation: "RETURN without matching GOSUB",
+                statement: statement
+            )
+        }
+
+    default:
+        throw InterpreterError.InterpreterError(
+            explanation: "Unknown statement type",
+            statement: statement
+        )
     }
+}
+
     
     // interpret all the statements, initially by going through them sequentially
     // later statements may change the order of execution
@@ -105,10 +151,27 @@ extension BASICPlayer {
     
     // evaluation a boolean expression by checking its respective operator and
     // evaluating each of the two operands
-    public func evaluate(booleanExpression: BooleanExpression) -> Bool {
-        // YOU FILL IN HERE
-        return false
+   public func evaluate(booleanExpression: BooleanExpression) -> Bool {
+    let leftValue = evaluate(expression: booleanExpression.left)
+    let rightValue = evaluate(expression: booleanExpression.right)
+
+    switch booleanExpression.operation {
+    case .equal:
+        return leftValue == rightValue
+    case .notEqual:
+        return leftValue != rightValue
+    case .lessThan:
+        return leftValue < rightValue
+    case .lessThanEqual:
+        return leftValue <= rightValue
+    case .greaterThan:
+        return leftValue > rightValue
+    case .greaterThanEqual:
+        return leftValue >= rightValue
+    default:
+        fatalError("Unexpected token in BooleanExpression: \(booleanExpression.operation)")
     }
+}
     
     // evaluate an Expression by using Swift's built-in arithmetic facilities
     public func evaluate(expression: Expression) -> Int16 {
